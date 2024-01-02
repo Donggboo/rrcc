@@ -278,8 +278,6 @@ namespace ns3 {
 				// transmit
 				m_traceQpDequeue(p, lastQp);
 				TransmitStart(p);
-				//lastQp->sip.Print(std::cout);
-                //std::cout<<" "<<Simulator::Now().GetNanoSeconds()<<" "<<lastQp->m_rate.GetBitRate()<<" "<<lastQp->m_win<<std::endl;
 				// update for the next avail time
 				m_rdmaPktSent(lastQp, p, m_tInterframeGap);
 			}else { // no packet to send
