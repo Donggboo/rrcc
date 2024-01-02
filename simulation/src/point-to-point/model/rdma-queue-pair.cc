@@ -32,15 +32,6 @@ RdmaQueuePair::RdmaQueuePair(uint16_t pg, Ipv4Address _sip, Ipv4Address _dip, ui
 	m_ipid = 0;
 	m_win = 0;
 	m_baseRtt = 0;
-    c_rtt=0;
-	for(int i=0;i<100;i++){
-		set_get_rtt[i]=true;
-		send_tm[i]=Simulator::Now().GetNanoSeconds();
-		seq[i]=0;
-	}
-	ind=0;
-	last_tm=0;
-	lastds=0;
 
 	m_max_rate = 0;
 	m_var_win = false;
