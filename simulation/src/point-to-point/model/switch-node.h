@@ -33,12 +33,6 @@ protected:
 
 	uint32_t m_ackHighPrio; // set high priority for ACK/NACK
 
-	uint64_t bit;
-	uint32_t qlen;
-	uint64_t rate;
-	std::unordered_map<uint32_t, uint64_t> lastsnd;
-	uint64_t upi;
-
 private:
 	int GetOutDev(Ptr<const Packet>, CustomHeader &ch);
 	void SendToDev(Ptr<Packet>p, CustomHeader &ch);

@@ -60,11 +60,6 @@ SwitchNode::SwitchNode(){
 		m_lastPktSize[i] = m_lastPktTs[i] = 0;
 	for (uint32_t i = 0; i < pCnt; i++)
 		m_u[i] = 0;
-	qlen=0;
-	bit=0;
-	rate=0;
-	upi=0;
-	m_ackHighPrio=1;
 }
 
 int SwitchNode::GetOutDev(Ptr<const Packet> p, CustomHeader &ch){
@@ -129,7 +124,6 @@ void SwitchNode::SendToDev(Ptr<Packet>p, CustomHeader &ch){
 		// admission control
 		FlowIdTag t;
 		p->PeekPacketTag(t);
-		//printf("qinx%d  m_ackHighPrio:%d  ch:%d\n",qIndex,m_ackHighPrio,ch.l3Prot);
 		uint32_t inDev = t.GetFlowId();
 		if (qIndex != 0){ //not highest priority
 			if (m_mmu->CheckIngressAdmission(inDev, qIndex, p->GetSize()) && m_mmu->CheckEgressAdmission(idx, qIndex, p->GetSize())){			// Admission control
@@ -141,7 +135,7 @@ void SwitchNode::SendToDev(Ptr<Packet>p, CustomHeader &ch){
 			CheckAndSendPfc(inDev, qIndex);
 		}
 		if(m_ccMode==11&&ch.l3Prot==0x11){
-			//sendq(p,idx);
+			sendq(p,idx);
 		}
 		m_bytes[inDev][idx][qIndex] += p->GetSize();
 		m_devices[idx]->SwitchSend(qIndex, p, ch);
@@ -236,12 +230,11 @@ void SwitchNode::SwitchNotifyDequeue(uint32_t ifIndex, uint32_t qIndex, Ptr<Pack
 		uint8_t* buf = p->GetBuffer();
 		if (buf[PppHeader::GetStaticSize() + 9] == 0x11){ // udp packet
 			if(m_ccMode==11){
-				sendq(p,ifIndex);
+				//sendq(p,ifIndex);
 			}
 			IntHeader *ih = (IntHeader*)&buf[PppHeader::GetStaticSize() + 20 + 8 + 6]; // ppp, ip, udp, SeqTs, INT
 			Ptr<QbbNetDevice> dev = DynamicCast<QbbNetDevice>(m_devices[ifIndex]);
 			if (m_ccMode == 3){ // HPCC
-				//printf("nhop:%d\n",ih->nhop);
 				ih->PushHop(Simulator::Now().GetTimeStep(), m_txBytes[ifIndex], dev->GetQueue()->GetNBytesTotal(), dev->GetDataRate().GetBitRate());
 			}else if (m_ccMode == 10){ // HPCC-PINT
 				uint64_t t = Simulator::Now().GetTimeStep();
@@ -365,7 +358,6 @@ void SwitchNode::sendq(Ptr<Packet> p,uint32_t ifIndex){
 	ipv4h.SetDestination(Ipv4Address(ch.sip));
 	ipv4h.SetPayloadSize(0);
 	ipv4h.SetTtl(64);
-	//ipv4h.SetIdentification(UniformVariable(0, 65536).GetValue());
 	newp->AddHeader(ipv4h);
 	PppHeader ppp;
 	ppp.SetProtocol (0x0021);
