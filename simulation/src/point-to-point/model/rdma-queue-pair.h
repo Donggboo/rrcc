@@ -83,18 +83,8 @@ public:
 		uint32_t m_incStage;
 	}hpccPint;
     
-	uint64_t c_rtt;
-	bool set_get_rtt[100];
-	uint64_t seq[100];
-	uint64_t send_tm[100];
-	int ind;
-	uint64_t last_tm;
     std::unordered_map<uint32_t,double> ip_to_u;
-	std::unordered_map<uint32_t,double> last_u;
 	std::unordered_map<uint32_t,IntHop> ip_hop;
-	uint64_t lastds;
-
-
 
 	/***********
 	 * methods
