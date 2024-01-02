@@ -1,0 +1,83 @@
+ENABLE_QCN 1
+USE_DYNAMIC_PFC_THRESHOLD 1
+
+PACKET_PAYLOAD_SIZE 1000
+
+TOPOLOGY_FILE mix/topology.txt
+#拓扑文件，
+#第一行：node数，switch数，link数。
+#第二行：switch index。
+#第三行及以后：每个link，端点1，端点2，bandwidth，delay，err_rate（应该是丢包率）
+
+FLOW_FILE mix/flow.txt
+#流文件
+TRACE_FILE mix/trace.txt
+#
+TRACE_OUTPUT_FILE mix/mix.tr
+#包粒度的信息，使用trace_reader 可以分析每个包的信息
+#详见 uilt.hpp:print_trace()
+
+FCT_OUTPUT_FILE mix/fct.txt
+#fct信息：
+#fprintf(fout, "%08x %08x %u %u %lu %lu %lu %lu\n", q->sip.Get(), q->dip.Get(), q->sport, q->dport, q->m_size, q->startTime.GetTimeStep(), (Simulator::Now() - q->startTime).GetTimeStep(), standalone_fct);
+#scratch:third.cc:165
+
+PFC_OUTPUT_FILE mix/pfc.txt
+#pfc信息
+#fprintf(fout, "%lu %u %u %u %u\n", Simulator::Now().GetTimeStep(), dev->GetNode()->GetId(), dev->GetNode()->GetNodeType(), dev->GetIfIndex(), type);
+#scratch:third.cc:182
+
+SIMULATOR_STOP_TIME 4.00
+
+CC_MODE 3
+ALPHA_RESUME_INTERVAL 1
+RATE_DECREASE_INTERVAL 4
+CLAMP_TARGET_RATE 0
+RP_TIMER 900 
+EWMA_GAIN 0.00390625
+FAST_RECOVERY_TIMES 1
+RATE_AI 50Mb/s
+RATE_HAI 100Mb/s
+MIN_RATE 100Mb/s
+DCTCP_RATE_AI 1000Mb/s
+
+ERROR_RATE_PER_LINK 0.0000
+L2_CHUNK_SIZE 4000
+L2_ACK_INTERVAL 1
+L2_BACK_TO_ZERO 0
+
+HAS_WIN 1
+GLOBAL_T 1
+VAR_WIN 1
+FAST_REACT 1
+U_TARGET 0.95
+MI_THRESH 0
+INT_MULTI 1
+MULTI_RATE 0
+SAMPLE_FEEDBACK 0
+PINT_LOG_BASE 1.05
+PINT_PROB 1.0
+
+RATE_BOUND 1
+
+ACK_HIGH_PRIO 0
+
+LINK_DOWN 0 0 0
+
+ENABLE_TRACE 1
+
+KMAX_MAP 3 25000000000 400 50000000000 800 100000000000 1600
+KMIN_MAP 3 25000000000 100 50000000000 200 100000000000 400
+PMAX_MAP 3 25000000000 0.2 50000000000 0.2 100000000000 0.2
+BUFFER_SIZE 32
+QLEN_MON_FILE mix/qlen.txt
+#qlen 文件：
+#第一行：时间
+#此后：
+#src,dst,qlen_times。（src，dst）对应端口，qlen_times表示缓冲区大小为i的次数为qlen_times。
+#列如：0，1，1：节点0和1之间的缓冲区为0的次数为1
+#0，1，2：节点0和1之间的缓冲区为0的次数为2
+#0，1，2，2：节点0和1之间的缓冲区为0的次数为2，缓冲区为1的出现次数为2
+#2，4，1000，23，0，0，0，0，1：节点：2和4之间的缓冲区为0的次数为1000，缓冲区大小为1的测试为23，缓冲区大小为2-5的次数为0，大小为6的次数为1
+QLEN_MON_START 2000000000
+QLEN_MON_END 2010000000
