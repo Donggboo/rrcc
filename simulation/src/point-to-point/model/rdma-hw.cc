@@ -837,6 +837,7 @@ void RdmaHw::UpdateRateHp(Ptr<RdmaQueuePair> qp, Ptr<Packet> p, CustomHeader &ch
 				double duration = (double)tau * 1e-9;
 				double txRate = (ih.hop[i].GetBytesDelta(qp->hp.hop[i])) * 8 / duration;
 				double u=txRate / ih.hop[i].GetLineRate()+(double)std::min(ih.hop[i].GetQlen(), qp->hp.hop[i].GetQlen()) * qp->m_max_rate.GetBitRate() / ih.hop[i].GetLineRate() /qp->m_win;
+				#if PRINT_LOG
 				if (print)
 					printf(" %.3lf %.3lf", txRate, u);
 				#endif
