@@ -15,15 +15,6 @@
 #include "rtt-header.h"
 
 
-#define rtt_c 0
-#define hpcc_c 0
-#define inflightbit 0
-#define use 0
-#define ucc  1
-
-
-
-
 namespace ns3{
 
 TypeId RdmaHw::GetTypeId (void)
@@ -236,9 +227,6 @@ void RdmaHw::AddQueuePair(uint64_t size, uint16_t pg, Ipv4Address sip, Ipv4Addre
 	uint64_t key=GetQpKey(sip.Get(), sport, pg);
 	while (m_qpMap.find(key)!=m_qpMap.end())
 	{
-		//printf("%d %d %d %d ",m_qpMap[key]->sip.Get(),sip.Get(),m_qpMap[key]->sport,sport);
-		//printf("%ld %ld \n",m_qpMap[key]->snd_nxt,m_qpMap[key]->m_size);
-		
 		sport++;
 		key=GetQpKey(sip.Get(), sport, pg);
 	}
@@ -253,7 +241,6 @@ void RdmaHw::AddQueuePair(uint64_t size, uint16_t pg, Ipv4Address sip, Ipv4Addre
 	// add qp
 	uint32_t nic_idx = GetNicIdxOfQp(qp);
 	m_nic[nic_idx].qpGrp->AddQp(qp);
-	//uint64_t key = GetQpKey(sip.Get(), sport, pg);
 	auto it=m_qpMap.find(key);
 	if(it==m_qpMap.end()){
 		m_qpMap[key] = qp;
@@ -331,7 +318,6 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 	uint8_t ecnbits = ch.GetIpv4EcnBits();
 
 	// TODO find corresponding rx queue pair
-	//Ptr<RdmaRxQueuePair> rxQp = GetRxQp(ch.dip, ch.sip, ch.udp.dport, ch.udp.sport, ch.udp.pg, true);
 	if (ecnbits != 0){
 		rxQp->m_ecn_source.ecnbits |= ecnbits;
 		rxQp->m_ecn_source.qfb++;
@@ -401,7 +387,7 @@ int RdmaHw::ReceiveCnp(Ptr<Packet> p, CustomHeader &ch){
 		qp->m_rate = dev->GetDataRate();
 		if (m_cc_mode == 1){
 			qp->mlx.m_targetRate = dev->GetDataRate();
-		}else if (m_cc_mode == 3||m_cc_mode == 11){
+		}else if (m_cc_mode == 3){
 			qp->hp.m_curRate = dev->GetDataRate();
 			if (m_multipleRate){
 				for (uint32_t i = 0; i < IntHeader::maxHop; i++)
@@ -436,9 +422,6 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 	Ptr<RdmaQueuePair> qp = GetQp(ch.dip, port, qIndex);
 	if (qp == NULL){
 		std::cout << "ERROR: " << "node:" << m_node->GetId() << ' ' << (ch.l3Prot == 0xFC ? "ACK" : "NACK") << " NIC cannot find the flow\n";
-		std::cout<<"qp==null"<<std::endl;
-		printf("%d %d %d %d \n",(Ipv4Address(ch.sip).Get()>>8)&0xffff,port,qIndex,seq);
-
 		return 0;
 	}
 
@@ -495,7 +478,7 @@ int RdmaHw::Receive(Ptr<Packet> p, CustomHeader &ch){
 	}else if (ch.l3Prot == 0xFC){ // ACK
 	//std::cout<<"ACK"<<std::endl;
 		ReceiveAck(p, ch);
-	}else if(ch.l3Prot==0xFB){
+	}else if(ch.l3Prot==0xFB){ //RTT
 		ReceiveRtt(p,ch);
 	}
 	return 0;
@@ -662,18 +645,8 @@ void RdmaHw::ChangeRate(Ptr<RdmaQueuePair> qp, DataRate new_rate){
 	uint32_t nic_idx = GetNicIdxOfQp(qp);
 	m_nic[nic_idx].dev->UpdateNextAvail(qp->m_nextAvail);
 	#endif
-
 	// change to new rate
 	qp->m_rate = new_rate;
-	//printf("throughput ");
-	//qp->sip.Print(std::cout);
-	//printf(" %ld %ld\n",Simulator::Now().GetTimeStep(),new_rate.GetBitRate());
-	/*for (auto it:qp->ip_hop )
-	{
-		printf("%d ",it.second.GetQlen());
-	}
-	std::cout<<std::endl;*/
-	
 }
 
 #define PRINT_LOG 0
@@ -814,20 +787,15 @@ void RdmaHw::HandleAckHp(Ptr<RdmaQueuePair> qp, Ptr<Packet> p, CustomHeader &ch)
 	}else{ // do fast react
 		FastReactHp(qp, p, ch);
 	}
-	//qp->sip.Print(std::cout);
-    //printf(" %ld %ld %ld %ld %lf\n",qp->m_rate.GetBitRate(),Simulator::Now().GetNanoSeconds(),qp->c_rtt,qp->m_baseRtt,qp->hp.u);
-	
 }
 
 void RdmaHw::UpdateRateHp(Ptr<RdmaQueuePair> qp, Ptr<Packet> p, CustomHeader &ch, bool fast_react){
-	//printf("%d\n",ch.ack.ih.nhop);
 	uint32_t next_seq = qp->snd_nxt;
 	bool print = !fast_react || true;
 	if (qp->hp.m_lastUpdateSeq == 0){ // first RTT
 		qp->hp.m_lastUpdateSeq = next_seq;
 		// store INT
 		IntHeader &ih = ch.ack.ih;
-		//printf("nhop:%u\n",ih.nhop);
 		NS_ASSERT(ih.nhop <= IntHeader::maxHop);
 		for (uint32_t i = 0; i < ih.nhop; i++)
 			qp->hp.hop[i] = ih.hop[i];
@@ -855,12 +823,6 @@ void RdmaHw::UpdateRateHp(Ptr<RdmaQueuePair> qp, Ptr<Packet> p, CustomHeader &ch
 			uint64_t dt = 0;
 			bool updated[IntHeader::maxHop] = {false}, updated_any = false;
 			NS_ASSERT(ih.nhop <= IntHeader::maxHop);
-			double rtt_now=0;
-			for (auto it:qp->ip_hop){
-				rtt_now+=(double)it.second.GetQlen()*8*1e9/(double)it.second.GetLineRate();
-			}
-			//printf("\n");
-			//printf("%lf\n",rtt_now);
 			for (uint32_t i = 0; i < ih.nhop; i++){
 				if (m_sampleFeedback){
 					if (ih.hop[i].GetQlen() == 0 && fast_react)
@@ -874,48 +836,7 @@ void RdmaHw::UpdateRateHp(Ptr<RdmaQueuePair> qp, Ptr<Packet> p, CustomHeader &ch
 				uint64_t tau = ih.hop[i].GetTimeDelta(qp->hp.hop[i]);
 				double duration = (double)tau * 1e-9;
 				double txRate = (ih.hop[i].GetBytesDelta(qp->hp.hop[i])) * 8 / duration;
-				
-				#if hpcc_c==0
-				double u1=txRate / ih.hop[i].GetLineRate();
-				double u2=(double)std::min(ih.hop[i].GetQlen(), qp->hp.hop[i].GetQlen()) * qp->m_max_rate.GetBitRate() / ih.hop[i].GetLineRate() /qp->m_win;
-				//double u2=(double)std::min(ih.hop[i].GetQlen(), qp->hp.hop[i].GetQlen()) /(ih.hop[i].GetLineRate()*qp->m_baseRtt/(1e9*8));
-				double u =  u1+ u2;
-				
-				if(i==3){
-					//qp->sip.Print(std::cout);
-					//printf(" %ld %d %ld %lf\n",txRate,Simulator::Now().GetTimeStep(),ch.ack.ih.hop[i].GetQlen(),u);
-				}
-				//printf("hpcc:%d %lf \n",ih.hop[i].GetQlen(),txRate);
-
-				#if inflightbit==1
-				if(i==ih.nhop-1){
-					int64_t rtt=(Simulator::Now().GetNanoSeconds()-ih.hop[0].GetTime()+1000);
-					uint64_t b1=txRate*qp->m_baseRtt/(1e9*8)+ih.hop[i].GetQlen();
-					uint64_t b2=txRate*(qp->c_rtt+rtt_now)/(1e9*8);
-					//uint64_t b2=txRate*rtt/(1e9*8);
-					#if use
-					printf("%ld %ld %ld ",b1,b2,Simulator::Now().GetNanoSeconds()-(int64_t)rtt_now);
-					#else
-					printf("%ld %ld %ld ",b1,b2,Simulator::Now().GetNanoSeconds());
-					#endif
-					qp->sip.Print(std::cout);
-					std::cout<<std::endl;
-				}
-				#endif
-				#elif hpcc_c==1
-				double u=(txRate*(qp->c_rtt+rtt_now))/(ih.hop[i].GetLineRate()*(qp->m_baseRtt));
-                
-				#elif hpcc_c==2
-				int64_t rtt=(Simulator::Now().GetNanoSeconds()-ih.hop[0].GetTime()+1000);
-				double b2=txRate*rtt/(1e9*8);
-				double u=b2*qp->m_max_rate.GetBitRate() / ih.hop[i].GetLineRate() /qp->m_win;
-				#endif
-				//printf("%ld\n",qp->c_rtt);
-				//printf("31231231231");
-				//printf("%ld\n",qp->m_rate);
-				//printf("%lf %lf %lf %d %ld %ld %d %ld\n",u1,u2,txRate,ih.hop[i].GetQlen(),qp->m_max_rate.GetBitRate(),ih.hop[i].GetLineRate(),qp->m_win ,ih.hop[i].time);
-				//double u = txRate / ih.hop[i].GetLineRate() + (double)std::min(ih.hop[i].GetQlen(), qp->hp.hop[i].GetQlen()) /ih.hop[i].GetLineRate()/qp->m_baseRtt;
-				#if PRINT_LOG
+				double u=txRate / ih.hop[i].GetLineRate()+(double)std::min(ih.hop[i].GetQlen(), qp->hp.hop[i].GetQlen()) * qp->m_max_rate.GetBitRate() / ih.hop[i].GetLineRate() /qp->m_win;
 				if (print)
 					printf(" %.3lf %.3lf", txRate, u);
 				#endif
@@ -945,8 +866,6 @@ void RdmaHw::UpdateRateHp(Ptr<RdmaQueuePair> qp, Ptr<Packet> p, CustomHeader &ch
 						dt = qp->m_baseRtt;
 					qp->hp.u = (qp->hp.u * (qp->m_baseRtt - dt) + U * dt) / double(qp->m_baseRtt);
 					max_c = qp->hp.u / m_targetUtil;
-					//max_c = qp->hp.u;
-                    //printf("%lf %d %d\n",max_c,qp->hp.m_incStage,m_miThresh);
 					if (max_c >= 1 || qp->hp.m_incStage >= m_miThresh){
 						new_rate = qp->hp.m_curRate / max_c + m_rai;
 						new_incStage = 0;
@@ -1011,9 +930,6 @@ void RdmaHw::UpdateRateHp(Ptr<RdmaQueuePair> qp, Ptr<Packet> p, CustomHeader &ch
 				#endif
 			}
 			if (updated_any){
-
-				//printf("update\n");
-				//if(new_rate>qp->m_rate)
 				ChangeRate(qp, new_rate);
 			}
 			if (!fast_react){
@@ -1235,76 +1151,40 @@ void RdmaHw::HandleAckHpPint(Ptr<RdmaQueuePair> qp, Ptr<Packet> p, CustomHeader 
 		if(it==qp->ip_to_u.end()){
 			qp->ip_to_u[ch.sip]=1;
 			qp->ip_hop[ch.sip]=ch.ack.ih.hop[0];
-			//qp->last_u[ch.sip]=0;
 		}else{
 			uint64_t tau = ch.rtt.ih.GetTimeDelta(qp->ip_hop[ch.sip]);
 			double duration = tau * 1e-9;
 			double txRate = (ch.rtt.ih.GetBytesDelta(qp->ip_hop[ch.sip])) * 8 / duration;
 			double qRate  = ((int)ch.rtt.ih.GetQlen()-(int)qp->ip_hop[ch.sip].GetQlen())*8/duration;
-			//printf("qrate:%lf\n",txRate);
 			double rtt_now=0;
-			double u1=txRate / ch.rtt.ih.GetLineRate();
-			double u2=(double)std::min(ch.rtt.ih.GetQlen(), qp->ip_hop[ch.sip].GetQlen()) * qp->m_max_rate.GetBitRate() / ch.ack.ih.hop[0].GetLineRate() /qp->m_win;
-			//double u =  u1+ u2;
 			qp->ip_hop[ch.sip]=ch.rtt.ih;
 			for (auto it:qp->ip_hop){
 				rtt_now+=(double)it.second.GetQlen()*8*1e9/(double)it.second.GetLineRate();
 			}
 			DataRate m_sp=DataRate(50000000)*ch.rtt.rate;
 			double u3=txRate*(qp->m_baseRtt+rtt_now)/(qp->ip_hop[ch.sip].GetLineRate()*(qp->m_baseRtt));
-			//double u4=(qRate+txRate)/ch.rtt.ih.GetLineRate();
-			//u4=std::max(u4,0.01);
-			//printf("u4:%lf %d\n",u4,ch.sip);
 			double u=1;
 			double now=Simulator::Now().GetTimeStep()%16777216;
 			if(now<ch.rtt.ih.GetTime())
 				now+=16777216;
 			double T=now-ch.rtt.ih.GetTime();
-			//if(ch.rtt.ih.GetQlen()<=-qRate*1e-9/8*T){
-				//u=u4;
-			//}else{
-				//u=u4*u4;
-		    //}
-		    //u=u3+u4;
-			
 			if(tau>T){
 				tau=T;
 			}
-			//if(u4>1)
-				//u=u4*u4;
-			//else
-				//u=u4;
-			
-		    //u=std::max(u4,u3);
-			//qp->ip_to_u[ch.sip]=u4;
-			//u3=u3/0.95;
-			
-			//printf("T:%lf\n",T);
-		    //double T=qp->m_baseRtt;
 			qp->ip_to_u[ch.sip]=u3*tau/T+qp->ip_to_u[ch.sip]*(T-tau)/T;
-			
 			double U=0;
 			for(auto it_u:qp->ip_to_u){
 				U=std::max(U,it_u.second);
 			}
 			if(U>qp->ip_to_u[ch.sip])
 				return;
-			//printf("%d %lf %ld %lf %lf %ld %ld\n",ch.rtt.ih.GetQlen(),T,tau,u3,U,Simulator::Now().GetTimeStep(),ch.rtt.ih.GetTime());
-			//printf("U:%lf %lf,%ld %ld %ld\n",U,T,tau,Simulator::Now().GetTimeStep(),ch.rtt.ih.GetTime());
-			DataRate new_rate=m_sp/U+DataRate(1000000000);
-			//DataRate new_rate=qp->hp.m_curRate/U;
+			DataRate new_rate=m_sp/U;//+DataRate(1000000000);
 			if(new_rate>qp->m_max_rate){
 				new_rate=qp->m_max_rate;
 			}else if(new_rate<m_minRate){
 				new_rate=m_minRate;
 			}
 			ChangeRate(qp, new_rate);
-			//if(ch.sip==184552193){
-			//if(ch.sip==184551425){
-			qp->sip.Print(std::cout);
-			printf(" %ld %d %ld %lf %lf %lf %ld %lf\n",ch.rtt.ih.GetTime(),ch.rtt.ih.GetQlen(),new_rate.GetBitRate(),txRate,U,u3,m_sp.GetBitRate(),qRate);
-			//}
-			////}
 		}
 	}
 }
