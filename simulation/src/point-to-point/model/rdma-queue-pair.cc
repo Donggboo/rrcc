@@ -79,8 +79,6 @@ void RdmaQueuePair::SetWin(uint32_t win){
 
 void RdmaQueuePair::SetBaseRtt(uint64_t baseRtt){
 	m_baseRtt = baseRtt;
-	c_rtt=baseRtt;
-	
 }
 
 void RdmaQueuePair::SetVarWin(bool v){
